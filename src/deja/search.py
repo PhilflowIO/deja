@@ -25,7 +25,7 @@ def _vector_search(conn, model, query: str, k: int = 20) -> list[dict]:
             ORDER BY distance
         )
         SELECT c.id, c.session_id, c.message_index, c.timestamp,
-               c.project_path, c.chunk_text, c.tool_result_text,
+               c.project_path, c.kind, c.chunk_text, c.tool_result_text,
                v.distance
         FROM vec_results v
         JOIN chunks c ON c.id = v.rowid
@@ -36,8 +36,8 @@ def _vector_search(conn, model, query: str, k: int = 20) -> list[dict]:
     return [
         {
             "id": r[0], "session_id": r[1], "message_index": r[2],
-            "timestamp": r[3], "project_path": r[4], "chunk_text": r[5],
-            "tool_result_text": r[6], "distance": r[7],
+            "timestamp": r[3], "project_path": r[4], "kind": r[5],
+            "chunk_text": r[6], "tool_result_text": r[7], "distance": r[8],
         }
         for r in rows
     ]
@@ -48,7 +48,7 @@ def _fts_search(conn, query: str, k: int = 20) -> list[dict]:
         rows = conn.execute(
             """
             SELECT c.id, c.session_id, c.message_index, c.timestamp,
-                   c.project_path, c.chunk_text, c.tool_result_text,
+                   c.project_path, c.kind, c.chunk_text, c.tool_result_text,
                    rank
             FROM chunks_fts f
             JOIN chunks c ON c.id = f.rowid
@@ -64,8 +64,8 @@ def _fts_search(conn, query: str, k: int = 20) -> list[dict]:
     return [
         {
             "id": r[0], "session_id": r[1], "message_index": r[2],
-            "timestamp": r[3], "project_path": r[4], "chunk_text": r[5],
-            "tool_result_text": r[6], "fts_rank": r[7],
+            "timestamp": r[3], "project_path": r[4], "kind": r[5],
+            "chunk_text": r[6], "tool_result_text": r[7], "fts_rank": r[8],
         }
         for r in rows
     ]
@@ -113,9 +113,10 @@ def _apply_time_decay(results: list[dict], alpha: float = TIME_DECAY_ALPHA) -> l
 def hybrid_search(
     conn, model, query: str, limit: int = 10,
     project: str = None, date_from: str = None, date_to: str = None,
+    include_subagents: bool = False,
     time_decay: bool = False,
 ) -> list[dict]:
-    has_filters = project or date_from or date_to
+    has_filters = project or date_from or date_to or not include_subagents
     k = 100 if has_filters else 20
     vec_results = _vector_search(conn, model, query, k=k)
     fts_results = _fts_search(conn, query, k=k)
@@ -124,6 +125,8 @@ def hybrid_search(
     if time_decay:
         merged = _apply_time_decay(merged)
 
+    if not include_subagents:
+        merged = [r for r in merged if r.get("kind", "main") == "main"]
     if project:
         merged = [r for r in merged if r.get("project_path") == project]
     if date_from:

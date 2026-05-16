@@ -77,7 +77,7 @@ def _iter_batches(iterator, size):
             break
         yield batch
 
-def index_file(conn, model: TextEmbedding, path: str, project_path: str):
+def index_file(conn, model: TextEmbedding, path: str, project_path: str, kind: str = "main"):
     session_id = os.path.splitext(os.path.basename(path))[0]
     needs = check_needs_reindex(conn, path)
 
@@ -98,7 +98,7 @@ def index_file(conn, model: TextEmbedding, path: str, project_path: str):
     for batch_turns in _iter_batches(turns_gen, TURNS_PER_BATCH):
         chunks = []
         for turn in batch_turns:
-            chunks.extend(make_chunks(turn, session_id, project_path))
+            chunks.extend(make_chunks(turn, session_id, project_path, kind))
 
         if not chunks:
             continue
@@ -141,10 +141,10 @@ def _upsert_chunk(conn, chunk: dict, embedding):
     if row:
         chunk_id = row[0]
         conn.execute(
-            """UPDATE chunks SET timestamp = ?, project_path = ?,
+            """UPDATE chunks SET timestamp = ?, project_path = ?, kind = ?,
                chunk_text = ?, tool_result_text = ?
                WHERE id = ?""",
-            (chunk["timestamp"], chunk["project_path"],
+            (chunk["timestamp"], chunk["project_path"], chunk.get("kind", "main"),
              chunk["chunk_text"], chunk.get("tool_result_text", ""), chunk_id),
         )
         conn.execute(
@@ -158,11 +158,11 @@ def _upsert_chunk(conn, chunk: dict, embedding):
     else:
         cursor = conn.execute(
             """INSERT INTO chunks
-            (session_id, message_index, split_index, timestamp, project_path, chunk_text, tool_result_text)
-            VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (session_id, message_index, split_index, timestamp, project_path, kind, chunk_text, tool_result_text)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
             (chunk["session_id"], chunk["message_index"], chunk["split_index"],
-             chunk["timestamp"], chunk["project_path"], chunk["chunk_text"],
-             chunk.get("tool_result_text", "")),
+             chunk["timestamp"], chunk["project_path"], chunk.get("kind", "main"),
+             chunk["chunk_text"], chunk.get("tool_result_text", "")),
         )
         chunk_id = cursor.lastrowid
         conn.execute(

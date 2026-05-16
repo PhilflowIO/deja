@@ -36,7 +36,14 @@ def _release_lock(lock_fd):
     except OSError:
         pass
 
-def _find_jsonl_files() -> list[tuple[str, str]]:
+def _find_jsonl_files() -> list[tuple[str, str, str]]:
+    """Discover JSONL session files under CLAUDE_PROJECTS_DIR.
+
+    Returns (jsonl_path, project_dir, kind) triples.
+    kind is "main" for top-level project sessions (`<project>/<session>.jsonl`)
+    and "subagent" for nested agent threads
+    (`<project>/<session>/subagents/agent-*.jsonl`).
+    """
     results = []
     if not os.path.isdir(CLAUDE_PROJECTS_DIR):
         print(f"[deja] {CLAUDE_PROJECTS_DIR} not found", file=sys.stderr)
@@ -47,7 +54,9 @@ def _find_jsonl_files() -> list[tuple[str, str]]:
         if not os.path.isdir(full_project):
             continue
         for jsonl in glob.glob(os.path.join(full_project, "*.jsonl")):
-            results.append((jsonl, project_dir))
+            results.append((jsonl, project_dir, "main"))
+        for jsonl in glob.glob(os.path.join(full_project, "*", "subagents", "*.jsonl")):
+            results.append((jsonl, project_dir, "subagent"))
 
     return results
 
@@ -75,10 +84,10 @@ def cmd_index(args):
         print(f"[deja] found {len(files)} JSONL files", file=sys.stderr)
 
         known_paths = set()
-        for i, (path, project) in enumerate(files):
+        for i, (path, project, kind) in enumerate(files):
             known_paths.add(path)
-            print(f"[deja] [{i+1}/{len(files)}] {os.path.basename(path)}", file=sys.stderr)
-            index_file(conn, model, path, project)
+            print(f"[deja] [{i+1}/{len(files)}] [{kind}] {os.path.basename(path)}", file=sys.stderr)
+            index_file(conn, model, path, project, kind)
 
         gc_orphans(conn, known_paths)
         conn.close()
@@ -107,6 +116,7 @@ def cmd_stats():
     files = conn.execute("SELECT COUNT(*) FROM indexed_files").fetchone()[0]
     sessions = conn.execute("SELECT COUNT(DISTINCT session_id) FROM chunks").fetchone()[0]
     projects = conn.execute("SELECT COUNT(DISTINCT project_path) FROM chunks").fetchone()[0]
+    kinds = dict(conn.execute("SELECT kind, COUNT(*) FROM chunks GROUP BY kind").fetchall())
 
     meta = dict(conn.execute("SELECT key, value FROM meta").fetchall())
 
@@ -132,6 +142,9 @@ def cmd_stats():
     print(f"Sessions:   {sessions}")
     print(f"Projects:   {projects}")
     print(f"Files:      {files}")
+    if kinds:
+        kind_summary = ", ".join(f"{k}={v:,}" for k, v in sorted(kinds.items()))
+        print(f"By kind:    {kind_summary}")
     print(f"Model:      {meta.get('embedding_model', '?')}")
     print(f"Dim:        {meta.get('embedding_dim', '?')}")
     print(f"Schema:     v{meta.get('schema_version', '?')}")
@@ -171,7 +184,10 @@ def cmd_search(args):
     print("Loading model...", file=sys.stderr)
     model = get_embedding_model()
 
-    results = hybrid_search(conn, model, args.query, limit=args.limit, project=args.project)
+    results = hybrid_search(
+        conn, model, args.query, limit=args.limit,
+        project=args.project, include_subagents=args.include_subagents,
+    )
 
     if not results:
         print("No results found.")
@@ -180,8 +196,9 @@ def cmd_search(args):
             score = r.get("score", 0)
             sid = r.get("session_id", "?")[:12]
             ts = r.get("timestamp", "")[:19]
+            kind = r.get("kind", "main")
             text = r.get("chunk_text", "")[:200].replace("\n", " ")
-            print(f"\n[{i}] score={score:.4f} | {sid} | {ts}")
+            print(f"\n[{i}] score={score:.4f} | {kind:8} | {sid} | {ts}")
             print(f"    {text}")
 
     conn.close()
@@ -237,6 +254,8 @@ def main():
     sr.add_argument("query", help="Search query")
     sr.add_argument("--limit", type=int, default=5, help="Max results (default: 5)")
     sr.add_argument("--project", default=None, help="Filter by project path")
+    sr.add_argument("--include-subagents", action="store_true",
+                    help="Also search subagent threads (default: main sessions only)")
 
     sub.add_parser("redact", help="Redact secrets in existing index (no re-embedding)")
 

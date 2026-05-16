@@ -2,7 +2,7 @@ import sqlite3
 import struct
 import sqlite_vec
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 EMBEDDING_MODEL = "intfloat/multilingual-e5-small"
 EMBEDDING_DIM = 384
 
@@ -27,6 +27,7 @@ def init_db(db_path: str) -> sqlite3.Connection:
             split_index INTEGER NOT NULL DEFAULT 0,
             timestamp TEXT,
             project_path TEXT,
+            kind TEXT NOT NULL DEFAULT 'main',
             chunk_text TEXT NOT NULL,
             tool_result_text TEXT,
             UNIQUE(session_id, message_index, split_index)
@@ -62,6 +63,7 @@ def init_db(db_path: str) -> sqlite3.Connection:
     conn.executescript("""
         CREATE INDEX IF NOT EXISTS idx_chunks_session ON chunks(session_id);
         CREATE INDEX IF NOT EXISTS idx_chunks_project_time ON chunks(project_path, timestamp);
+        CREATE INDEX IF NOT EXISTS idx_chunks_kind ON chunks(kind);
     """)
 
     meta_defaults = {
