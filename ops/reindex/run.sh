@@ -24,6 +24,11 @@ LOCAL_HOME=$HOME
 REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
 SSH_OPTS=${DEJA_SSH_OPTS:--o IdentitiesOnly=yes}
 GPU_DEVICE=${DEJA_GPU_DEVICE:-0}
+# Attention is quadratic in sequence length, so the batch ceiling is set by
+# the longest chunks, not the average. At the model's 512-token limit a batch
+# of 256 asks for a 2.4 GB buffer per layer and dies on a 24 GB card; 64 fits
+# with room for whatever else is resident.
+EMBED_BATCH=${DEJA_EMBED_BATCH:-64}
 
 ssh $SSH_OPTS "$REMOTE" "mkdir -p '$REMOTE_DIR'/home/.claude/projects '$REMOTE_DIR'/home/.codex/sessions '$REMOTE_DIR'/out '$REMOTE_DIR'/cache '$REMOTE_DIR'/src"
 
@@ -45,7 +50,7 @@ ssh $SSH_OPTS "$REMOTE" "docker run --rm --runtime=nvidia --gpus 'device=$GPU_DE
   -e HOME=$LOCAL_HOME \
   -e DEJA_INDEX_PATH=/out/index.db \
   -e DEJA_EMBED_PROVIDERS=${DEJA_EMBED_PROVIDERS:-CUDAExecutionProvider} \
-  -e DEJA_EMBED_BATCH=${DEJA_EMBED_BATCH:-256} \
+  -e DEJA_EMBED_BATCH=$EMBED_BATCH \
   -v '$REMOTE_DIR'/home:$LOCAL_HOME \
   -v '$REMOTE_DIR'/out:/out \
   -v '$REMOTE_DIR'/cache:/cache \
