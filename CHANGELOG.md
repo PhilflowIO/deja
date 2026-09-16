@@ -1,6 +1,16 @@
 # Changelog
 
-## Unreleased
+## 0.7.0+philflow.1 — 2026-09-16
+
+### Fork
+
+- **This build identifies itself.** The version carries a PEP 440 local segment
+  (`0.7.0+philflow.1`) so it cannot be confused with an upstream release, and
+  `db.writer_version()` stamps that value into every index built from here.
+  `deja.__version__` now reads package metadata instead of repeating the literal.
+- README badges, install instructions and project URLs point at this fork; the
+  upstream repository is linked as `Upstream`.
+- CI is triggerable on demand (`workflow_dispatch`).
 
 ### Features
 
