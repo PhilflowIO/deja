@@ -1,12 +1,15 @@
 # deja
 
-[![CI](https://github.com/CynepMyx/deja/actions/workflows/ci.yml/badge.svg)](https://github.com/CynepMyx/deja/actions)
-[![PyPI](https://img.shields.io/pypi/v/dejasearch)](https://pypi.org/project/dejasearch/)
-[![Python](https://img.shields.io/pypi/pyversions/dejasearch)](https://pypi.org/project/dejasearch/)
+[![CI](https://github.com/PhilflowIO/deja/actions/workflows/ci.yml/badge.svg)](https://github.com/PhilflowIO/deja/actions)
+[![Python](https://img.shields.io/badge/python-3.10%20%7C%203.13-blue)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![MCP](https://img.shields.io/badge/MCP-compatible-8A2BE2?logo=data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTYiIGhlaWdodD0iMTYiIHZpZXdCb3g9IjAgMCAxNiAxNiIgZmlsbD0id2hpdGUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGNpcmNsZSBjeD0iOCIgY3k9IjgiIHI9IjYiIGZpbGw9Im5vbmUiIHN0cm9rZT0id2hpdGUiIHN0cm9rZS13aWR0aD0iMS41Ii8+PGNpcmNsZSBjeD0iOCIgY3k9IjgiIHI9IjIiLz48L3N2Zz4=)](https://modelcontextprotocol.io/)
 
 > Semantic search over your AI coding agent session history. Ask questions about past conversations by meaning, not just keywords.
+
+> **This is a fork** of [CynepMyx/deja](https://github.com/CynepMyx/deja), kept ahead of it with
+> Claude Code sub-agent indexing, index provenance and a GPU-capable rebuild path. It is not
+> published to PyPI — install it from this repository, not with `pip install dejasearch`.
 
 **deja** is an [MCP server](https://modelcontextprotocol.io/) that indexes JSONL sessions from supported AI coding agents and provides hybrid search (vector + full-text) directly from Claude Code.
 
@@ -40,16 +43,13 @@ Search combines vector KNN (semantic similarity) and FTS5 (keyword matching) via
 ## Install
 
 ```bash
-pip install dejasearch
-```
-
-Or from source:
-
-```bash
-git clone https://github.com/CynepMyx/deja.git
+git clone https://github.com/PhilflowIO/deja.git
 cd deja
 pip install -e .
 ```
+
+`pip install dejasearch` pulls the upstream release from PyPI, which does not
+contain the changes in this fork.
 
 First run downloads the embedding model (~117 MB).
 
