@@ -116,18 +116,30 @@ def cmd_index(args):
         print(f"[deja] found {len(files)} JSONL files", file=sys.stderr)
 
         known_paths = set()
+        skipped = 0
         for i, (path, project, src, kind) in enumerate(files):
+            # Added before indexing, so a file skipped below keeps the chunks it
+            # already has: unreadable now is not the same as gone.
             known_paths.add(path)
             label = src if kind == "main" else f"{src}/{kind}"
             print(
                 f"[deja] [{i+1}/{len(files)}] [{label}] {os.path.basename(path)}",
                 file=sys.stderr,
             )
-            index_file(conn, model, path, project, source=src, kind=kind)
+            try:
+                index_file(conn, model, path, project, source=src, kind=kind)
+            except OSError as exc:
+                # One unreadable transcript (a dangling symlink, a file deleted
+                # between discovery and here) must not end the run: everything
+                # discovered after it would never be indexed, every run, until
+                # someone notices that search has gone blind (#8).
+                skipped += 1
+                print(f"[deja] skipped unreadable {path}: {exc}", file=sys.stderr)
 
         gc_orphans(conn, known_paths, sources=sources)
         conn.close()
-        print("[deja] indexing complete", file=sys.stderr)
+        suffix = f", {skipped} unreadable file(s) skipped" if skipped else ""
+        print(f"[deja] indexing complete{suffix}", file=sys.stderr)
     finally:
         _release_lock(lock_fd)
 
