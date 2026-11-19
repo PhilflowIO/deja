@@ -164,3 +164,59 @@ def test_index_rebuilds_when_the_writer_changed(monkeypatch, tmp_path, capsys):
     conn.close()
     assert chunks > 0
     assert chunks == vectors, "a rebuild must not leave orphan vectors behind"
+
+
+def _write_session(path, text):
+    with open(path, "w", encoding="utf-8") as f:
+        for line in [
+            {"type": "user", "message": {"content": [{"type": "text", "text": text}]}, "timestamp": "2026-03-30T10:00:00Z", "uuid": "1"},
+            {"type": "assistant", "message": {"content": [{"type": "text", "text": "antwort " + text}]}, "timestamp": "2026-03-30T10:00:05Z", "uuid": "2"},
+        ]:
+            f.write(json.dumps(line) + "\n")
+
+
+def test_index_skips_an_unreadable_transcript_and_finishes(monkeypatch, tmp_path, capsys):
+    """One dangling transcript must not blind the index to every file after it (#8).
+
+    A mirror of another machine carried an absolute symlink whose target only
+    exists there; `os.stat` raised and the run ended at that file, every run,
+    for five days.
+    """
+    import argparse
+
+    from deja import cli
+    from deja.parsers import claude_code
+
+    projects = tmp_path / "projects"
+    project = projects / "some-project"
+    project.mkdir(parents=True)
+    _write_session(project / "sess-good-a.jsonl", "erste sitzung")
+    _write_session(project / "sess-good-b.jsonl", "zweite sitzung")
+    subagents = project / "sess-good-a" / "subagents"
+    subagents.mkdir(parents=True)
+    _write_session(subagents / "agent-was-here.jsonl", "unteragent")
+
+    index_path = tmp_path / "index.db"
+    monkeypatch.setenv("DEJA_INDEX_PATH", str(index_path))
+    monkeypatch.setattr(claude_code, "CLAUDE_PROJECTS_DIR", str(projects))
+    args = argparse.Namespace(reindex=False, source="claude-code")
+    cli.cmd_index(args)
+    capsys.readouterr()
+
+    # The sub-agent thread turns into a link to a path that does not exist here,
+    # and a new session arrives alongside it.
+    agent = subagents / "agent-was-here.jsonl"
+    agent.unlink()
+    agent.symlink_to("/nonexistent/elsewhere/agent-was-here.jsonl")
+    _write_session(project / "sess-new.jsonl", "neue sitzung")
+
+    cli.cmd_index(args)
+    err = capsys.readouterr().err
+    assert f"skipped unreadable {agent}" in err
+    assert "indexing complete, 1 unreadable file(s) skipped" in err
+
+    conn = sqlite3.connect(index_path)
+    sessions = {row[0] for row in conn.execute("SELECT DISTINCT session_id FROM chunks")}
+    conn.close()
+    assert {"sess-good-a", "sess-good-b", "sess-new"} <= sessions
+    assert "agent-was-here" in sessions, "an unreadable file keeps the chunks it already had"
